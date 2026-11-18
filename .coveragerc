@@ -1,0 +1,24 @@
+# Coverage configuration for the Rudo bot.
+# Every production module is measured: the bot (main.py), persistence (db.py), model clients,
+# guardrails, the GPU-side servers, api/, training/ and scripts/. Only the tests, virtualenvs
+# (.venv, .venv-*, venv, site-packages) and verification logs are left out. No production lines are excluded with pragmas.
+[run]
+source = .
+branch = True
+omit =
+    tests/*
+    .venv/*
+    .venv*/*
+    venv/*
+    */site-packages/*
+    verify-logs/*
+
+[report]
+show_missing = True
+skip_empty = True
+precision = 2
+fail_under = 80
+
+[html]
+directory = htmlcov
+title = Rudo MedGemma coverage

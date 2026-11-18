@@ -1,0 +1,6 @@
+# Test-only dependencies. Installs the pinned production requirements first, so CI tests exactly
+# the versions that are deployed. GPU libraries (torch, unsloth, transformers, fasttext) are
+# replaced with fakes in the tests, and the suite blocks all network access.
+-r requirements.txt
+pytest==8.4.2
+pytest-cov==7.1.0
