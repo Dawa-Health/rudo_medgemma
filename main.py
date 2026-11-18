@@ -14,7 +14,7 @@ from flask import Flask, jsonify, render_template, request
 import db
 
 from medgemma_client import ask_medgemma, medgemma_enabled, pairs_from_history
-from medgemma_guardrails import clean_model_output, compose_reply
+from medgemma_guardrails import assess_safety, clean_model_output, compose_reply, self_harm_message
 from products_data import products_by_category
 from translategemma_client import needs_translation, translate, translategemma_enabled
 from training import (  # noqa: F401
@@ -1291,6 +1291,11 @@ def generate_reply(sender, prompt, lang):
     compose_reply always runs, even if translation or the model failed, so the danger sign
     referral can still fire from the user's own words.
     """
+    # Self-harm wording in the user's own words (English or an approved local phrase): the
+    # guardrail never uses the model's answer for these, so do not wait on translation or MedGemma.
+    if assess_safety(prompt).self_harm:
+        return compose_reply(prompt, lang, None), None
+
     pivot = needs_translation(lang)
     q_en = None
     reply_en = None
@@ -1362,7 +1367,9 @@ def answer_user(sender, prompt, phone_id_val):
     # A failure message is fixed local text, so keep it out of the history.
     send(reply, sender, phone_id_val, message_en=reply_en, save=not failed)
 
-    if failed:
+    # After the self-harm support message, do not ask "anything else?": a "no" to that question
+    # leads into the product offer.
+    if failed or reply == f"💛 {self_harm_message(lang)}":
         user_states[sender]["step"] = "chat"
         save_single_user_state(sender)
     else:
@@ -1953,6 +1960,10 @@ def handle_message(sender, prompt, phone_id_val):
             send(CANCEL_MAP.get(lang, "Your request has been cancelled. Returning you to Rudo."),
                  sender, phone_id_val, save=False)
         else:
+            # Do not leave an urgent message unanswered while no agent has picked up yet.
+            if assess_safety(prompt).urgent:
+                send(compose_reply(prompt, state.get("language", "english"), None),
+                     sender, phone_id_val, save=False)
             check_agent_request_timeout(sender, phone_id_val)
         return
 
@@ -1970,13 +1981,21 @@ def handle_message(sender, prompt, phone_id_val):
     lang = state.get("language", "english")
     step = state.get("step")
 
+    # Safety screen on the user's own words, before any keyword routing, so a self-harm or danger
+    # sign message is never consumed as a shop answer, a yes/no or a reset. (Pivoted languages are
+    # screened again on the English translation inside generate_reply/compose_reply.)
+    urgent = assess_safety(prompt).urgent
+
     # 2b. A delivery address is free text, so it skips the keyword checks below
-    if step == "shop_address":
+    if step == "shop_address" and not urgent:
         handle_shop_address(sender, prompt, phone_id_val)
         return
 
     # 3. Ask for a human
     if is_human_agent_request(prompt):
+        if urgent:
+            # Answer the urgent part now; the escalation below still goes ahead.
+            send(compose_reply(prompt, lang, None), sender, phone_id_val, save=False)
         send(CONNECTING_MAP.get(lang, "🔍 Looking for a human agent to assist you...\nPlease wait.\n"),
              sender, phone_id_val, save=False)
         state["step"] = "waiting_for_agent"
@@ -1985,7 +2004,7 @@ def handle_message(sender, prompt, phone_id_val):
         return
 
     # 4. Reset conversation context
-    if is_reset_request(prompt):
+    if is_reset_request(prompt) and not urgent:
         clear_conversation(sender)
         reset_flow(sender)
         send(GREET_MAP.get(lang, "Hello! How can I help you today?"), sender, phone_id_val, save=False)
@@ -1999,14 +2018,15 @@ def handle_message(sender, prompt, phone_id_val):
 
     # 6. Answer to "anything else?" (yes / no / a new question)
     if step == "follow_up":
-        if handle_follow_up_reply(sender, prompt, phone_id_val):
+        if not urgent and handle_follow_up_reply(sender, prompt, phone_id_val):
             return
         # otherwise it is a new question: fall through to MedGemma
 
     # 7. Shop flow
     elif step in SHOP_HANDLERS:
-        if step in SHOP_ESCAPABLE and looks_like_new_question(prompt):
-            # A real question in the middle of shopping: drop the order flow and answer it.
+        if urgent or (step in SHOP_ESCAPABLE and looks_like_new_question(prompt)):
+            # An urgent message or a real question in the middle of shopping: drop the order
+            # flow and answer it.
             reset_flow(sender)
             save_user_conversation(sender, "user", prompt)   # shop steps do not store messages
         else:
