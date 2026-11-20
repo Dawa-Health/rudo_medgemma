@@ -1,5 +1,3 @@
-
-
 import json
 import logging
 import os
@@ -1144,6 +1142,73 @@ def auto_register(sender):
     return state["user_id"]
 
 
+# Google Form with the terms and the AI training choice ("Yes" pre-selected). Commas and
+# brackets are percent-encoded so WhatsApp keeps the whole link clickable.
+CONSENT_FORM_URL = (
+    "https://docs.google.com/forms/d/e/1FAIpQLScGYIW_T7VgedVrJSzO1QPDwmy33Yp3G2ms8I4yJSh-cQ3Q8w/viewform"
+    "?usp=pp_url"
+    "&entry.1221265732=Yes%2C+I+opt+in.+Dawa+Health+may+use+my+conversations+with+Rudo+on+WhatsApp"
+    "%2C+with+my+name+and+contact+details+removed%2C+to+train+and+improve+%28fine-tune%29+its+AI+models."
+    "&entry.1012319286=The+text+of+my+messages%2C+including+what+my+voice+notes+say"
+)
+
+# Sent once, right after the welcome, to every new number, with a button that opens the form
+# so the long link never shows. Add reviewed translations keyed by language ("shona",
+# "bemba", ...). Languages without one get the English text.
+TERMS_NOTICE_MAP = {
+    "english": (
+        "By chatting with me, you agree to Dawa Health's terms, and Dawa Health may use your "
+        "conversations, with your name and number removed, to improve its AI. Saying no does "
+        "not change the help you get from me. You can read the terms or say no here:"
+    ),
+}
+# Button label. WhatsApp allows at most 20 characters.
+TERMS_BUTTON_MAP = {
+    "english": "Read terms / say no",
+}
+
+
+def send_cta_url(phone_number, body_text, button_text, url, phone_id_val):
+    """A message with one button that opens `url`, so the raw link is not shown."""
+    endpoint = f"https://graph.facebook.com/v19.0/{phone_id_val}/messages"
+    headers = {
+        "Authorization": f"Bearer {wa_token}",
+        "Content-Type": "application/json",
+    }
+    data = {
+        "messaging_product": "whatsapp",
+        "recipient_type": "individual",
+        "to": phone_number,
+        "type": "interactive",
+        "interactive": {
+            "type": "cta_url",
+            "body": {"text": body_text},
+            "action": {
+                "name": "cta_url",
+                "parameters": {"display_text": button_text[:20], "url": url},
+            },
+        },
+    }
+    resp = requests.post(endpoint, headers=headers, json=data, timeout=15)
+    logging.info(f"CTA URL send to {phone_number}: {resp.status_code}")
+    if resp.status_code >= 400:
+        logging.error(f"CTA URL send failed: {resp.text}")
+    return resp
+
+
+def send_terms_notice(sender, phone_id_val, lang):
+    """Terms notice with a button. If WhatsApp rejects the button, send the plain link."""
+    text = TERMS_NOTICE_MAP.get(lang, TERMS_NOTICE_MAP["english"])
+    button = TERMS_BUTTON_MAP.get(lang, TERMS_BUTTON_MAP["english"])
+    try:
+        resp = send_cta_url(sender, text, button, CONSENT_FORM_URL, phone_id_val)
+        if resp.status_code < 400:
+            return
+    except Exception as e:
+        logging.error(f"CTA URL send error: {type(e).__name__}: {e}")
+    say(f"{text}\n{CONSENT_FORM_URL}", sender, phone_id_val)
+
+
 def send_welcome_with_id(sender, phone_id_val, lang, user_id):
     welcome_map = {
         "shona": f"Mhoro! Ndinonzi Rudo, mubatsiri wepamhepo weDawa Health. ID yenyu ndeye: {user_id}. Chengetedza ID iyi nekuti ichakumbirwa kumaDawa clinics. Ndingakubatsirei nhasi?",
@@ -1153,15 +1218,17 @@ def send_welcome_with_id(sender, phone_id_val, lang, user_id):
         "tonga": f"Muli buti! Ndime Rudo, wakugwasya Dawa Health. ID yenu nji: {user_id}. Mweelede kuisunga kabotu ID kambo iyakubeleka ku Dawa clinics. Nga ndamukyasya buti lino?",
         "lozi": f"Mwa bona! Mina ki Rudo, mubasi wa ku thusa wa Dawa Health. ID ya hao ki: {user_id}. Boloka ID ye hantši kakuli u ta buzwa yona kwa makiliniki a Dawa. Nka ku thusa ka mini sunu?",
     }
+    welcome = welcome_map.get(
+        lang,
+        f"Hello! I'm Rudo, Dawa Health's virtual assistant. Your ID is: {user_id}. "
+        f"Keep this ID safe because it'll be asked for at the Dawa clinics. How can I help you today?"
+    )
     send(
-        welcome_map.get(
-            lang,
-            f"Hello! I'm Rudo, Dawa Health's virtual assistant. Your ID is: {user_id}. "
-            f"Keep this ID safe because it'll be asked for at the Dawa clinics. How can I help you today?"
-        ),
+        welcome,
         sender, phone_id_val,
         save=False,   # fixed text, must not reach MedGemma through the history
     )
+    send_terms_notice(sender, phone_id_val, lang)
 
 
 GREET_MAP = {
