@@ -170,7 +170,7 @@ Check each code against the model's chat template, and test real sentences per l
 
 ### Hugging Face Spaces (Gradio)
 
-The two models run as Gradio Spaces on GPU hardware: [MEDGEMMA_SPACE_URL](https://huggingface.co/spaces) and [TRANSLATEGEMMA_SPACE_URL](https://huggingface.co/spaces).
+The two models run as Gradio Spaces on GPU hardware: [MEDGEMMA_SPACE_URL]([https://huggingface.co/spaces](https://iamfae-medgemmav2.hf.space)) and [TRANSLATEGEMMA_SPACE_URL]([https://huggingface.co/spaces](https://iamfae-translategemma.hf.space)).
 
 Set these in each Space under Settings, Variables and secrets:
 
