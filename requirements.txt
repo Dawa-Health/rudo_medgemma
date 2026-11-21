@@ -1,12 +1,16 @@
-Flask
-google-generativeai
-pymupdf
-sqlalchemy
-urlextract
-psycopg2-binary
-redis
-upstash-redis
-packaging>=23.0
-PyPDF2
-requests
-gradio_client
+# ─────────────────────────────────────────────────────────────────────────────
+# Core runtime requirements — the Flask bot deployed on Vercel.
+# Python 3.9 – 3.11
+#
+# This file is for the HTTP-layer service only.  The GPU model servers
+# (MedGemma Space and NLLB/GlotLID Space) use requirements-server.txt.
+# The test suite uses requirements-dev.txt (which pulls these three packages).
+#
+# Packages NOT in this file that appear in the older combined requirements.txt:
+#   pymupdf, sqlalchemy, urlextract, psycopg2-binary, redis, upstash-redis,
+#   packaging, PyPDF2, gradio_client — none are imported by the bot source.
+# ─────────────────────────────────────────────────────────────────────────────
+Flask==3.1.3
+google-generativeai==0.8.6
+requests==2.32.5
+

@@ -4,3 +4,13 @@ __pycache__/
 .vercel/
 *.pyc
 .venv/
+
+# test artefacts
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.pytest_cache/
+verify-logs/
+.venv*/
+venv/

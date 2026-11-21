@@ -1,0 +1,25 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# GPU model-server requirements: medgemma_server.py (MedGemma + LoRA via Unsloth) and
+# nlp_endpoints.py (NLLB-200 translation + GlotLID language ID).
+#
+# Not used by the Vercel bot (see requirements.txt). Target: Linux with an NVIDIA GPU and CUDA,
+# Python 3.10+ (README). Unsloth does not support macOS/CPU-only machines.
+#
+# Verification status (independent audit, 2026-11-18): resolved and imported only on paper; the
+# full install and model loading need GPU hardware and were NOT executed. Test on the GPU host /
+# Hugging Face Space before relying on this file, then pin the versions that work there.
+# ─────────────────────────────────────────────────────────────────────────────
+Flask==3.1.3              # same version as the bot (requirements.txt)
+
+# MedGemma inference (medgemma_server.py: FastModel.from_pretrained(..., load_in_4bit=True))
+torch>=2.1                # install the CUDA build that matches the host's driver
+unsloth                   # pulls bitsandbytes / accelerate for 4-bit loading
+transformers
+
+# NLLB-200 tokenizer/model and GlotLID (nlp_endpoints.py)
+huggingface-hub
+fasttext==0.9.3
+# fasttext 0.9.3 predict() returns np.array(probs, copy=False) for a single string
+# (fasttext/FastText.py line 239), which raises ValueError on NumPy 2.x. nlp_endpoints /detect
+# calls predict(text, k=40) with a single string, so NumPy must stay below 2.
+numpy<2
